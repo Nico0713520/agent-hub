@@ -43,9 +43,13 @@
   var REPO_OWNER = 'Nico0713520';
   var REPO_NAME = 'agent-hub';
   var PDF_PATH = 'public/pdf';
+  var TOKEN = localStorage.getItem('gh_token') || '';
 
   var list = document.getElementById('file-list');
-  fetch('https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/contents/' + PDF_PATH).then(function(res) {
+  var headers = {};
+  if (TOKEN) { headers['Authorization'] = 'Bearer ' + TOKEN; }
+
+  fetch('https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/contents/' + PDF_PATH, { headers: headers }).then(function(res) {
     if (res.status === 404) { list.innerHTML = '<div class="empty">还没有上传任何文件<br><br><a href="/upload.html">去上传第一篇心得 →</a></div>'; return; }
     if (!res.ok) throw new Error('HTTP ' + res.status);
     return res.json();
