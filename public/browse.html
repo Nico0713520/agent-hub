@@ -61,7 +61,7 @@
     list.innerHTML = items.map(function(f) {
       var ext = f.name.split('.').pop().toLowerCase();
       var icon = iconMap[ext] || '📎';
-      var url = 'https://' + REPO_OWNER + '.github.io/' + REPO_NAME + '/pdf/' + encodeURIComponent(f.name);
+      var url = '/pdf/' + encodeURIComponent(f.name);
       return '<a class="file-item" href="' + url + '" target="_blank"><span class="icon">' + icon + '</span><span class="info"><span class="name">' + esc(f.name) + '</span></span><span class="arrow">→</span></a>';
     }).join('');
   }).catch(function(err) {
