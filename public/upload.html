@@ -38,7 +38,9 @@
 <body>
 <div class="wrap">
   <h1>上传心得</h1>
-  <p class="sub">拖拽 PDF 文件，直接上传</p>
+  <p class="sub">拖拽 PDF 文件，直接上传
+    <span id="reset-link" style="display:none"> · <a href="#" onclick="resetToken()" style="color:#e00;font-size:13px">重新设置Token</a></span>
+  </p>
   <div class="card" id="token-setup" style="display:none">
     <label>首次使用 — 设置 Token</label>
     <p style="font-size:13px;color:#999;margin-bottom:12px;">
@@ -77,7 +79,6 @@
   var uploadBtn = document.getElementById('upload-btn');
   var statusEl = document.getElementById('status');
 
-  // Token from localStorage (set once by admin, saved in browser)
   var TOKEN = localStorage.getItem('gh_token') || '';
   var tokenSetup = document.getElementById('token-setup');
   var mainUI = document.getElementById('main-ui');
@@ -86,10 +87,20 @@
   if (TOKEN) {
     tokenSetup.style.display = 'none';
     mainUI.style.display = '';
+    document.getElementById('reset-link').style.display = '';
   } else {
     tokenSetup.style.display = '';
     mainUI.style.display = 'none';
   }
+
+  window.resetToken = function() {
+    localStorage.removeItem('gh_token');
+    TOKEN = '';
+    tokenSetup.style.display = '';
+    mainUI.style.display = 'none';
+    document.getElementById('reset-link').style.display = 'none';
+    tokenInput.value = '';
+  };
 
   window.saveTokenUI = function() {
     var v = tokenInput.value.trim();
@@ -98,6 +109,7 @@
     TOKEN = v;
     tokenSetup.style.display = 'none';
     mainUI.style.display = '';
+    document.getElementById('reset-link').style.display = '';
   };
 
   dropZone.addEventListener('click', function() { fileInput.click(); });
@@ -135,6 +147,7 @@
     uploadBtn.disabled = true;
     uploadBtn.textContent = '上传中...';
     statusEl.className = 'status show';
+    uploadNext(0);
 
     function uploadNext(i) {
       if (i >= selectedFiles.length) {
@@ -146,17 +159,37 @@
         return;
       }
       var file = selectedFiles[i];
+      var safeName = encodeURIComponent(file.name);
       statusEl.textContent = '上传中: ' + file.name + ' (' + (i+1) + '/' + selectedFiles.length + ')';
       var reader = new FileReader();
       reader.onload = function() {
-        var base64 = reader.result.split(',')[1];
-        fetch('https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/contents/' + UPLOAD_PATH + '/' + file.name, {
+        var content = reader.result.split(',')[1];
+        var url = 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/contents/' + UPLOAD_PATH + '/' + safeName;
+        var body = JSON.stringify({ message: '上传: ' + file.name, content: content, branch: BRANCH });
+        fetch(url, {
           method: 'PUT',
           headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: '上传: ' + file.name, content: base64, branch: BRANCH })
+          body: body
         }).then(function(res) {
-          if (!res.ok) return res.json().then(function(e) { throw new Error(e.message); });
-          uploadNext(i + 1);
+          return res.json().then(function(data) {
+            if (res.ok) { uploadNext(i + 1); return; }
+            // 文件已存在，补 SHA 重试
+            if (data.message && data.message.indexOf('sha') !== -1) {
+              return fetch(url + '?ref=' + BRANCH, { headers: { 'Authorization': 'Bearer ' + TOKEN } }).then(function(r) {
+                return r.json().then(function(existing) {
+                  if (existing.sha) {
+                    var body2 = JSON.stringify({ message: '更新: ' + file.name, content: content, branch: BRANCH, sha: existing.sha });
+                    return fetch(url, { method: 'PUT', headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' }, body: body2 }).then(function(r2) {
+                      if (r2.ok) { uploadNext(i + 1); }
+                      else { return r2.json().then(function(e) { throw new Error(e.message); }); }
+                    });
+                  }
+                  throw new Error('file exists but cannot get sha');
+                });
+              });
+            }
+            throw new Error(data.message || 'HTTP ' + res.status);
+          });
         }).catch(function(err) {
           statusEl.className = 'status error show';
           statusEl.textContent = '失败: ' + file.name + ' - ' + err.message;
@@ -166,7 +199,6 @@
       };
       reader.readAsDataURL(file);
     }
-    uploadNext(0);
   });
 
   function fmtSize(b) { if (b < 1024) return b + 'B'; if (b < 1024*1024) return (b/1024).toFixed(1) + 'KB'; return (b/(1024*1024)).toFixed(1) + 'MB'; }
