@@ -1,0 +1,14 @@
+{
+  "name": "agent-hub",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vitepress build && vitepress preview --host 127.0.0.1",
+    "build": "vitepress build",
+    "preview": "vitepress preview"
+  },
+  "devDependencies": {
+    "vitepress": "^1.6.0"
+  }
+}

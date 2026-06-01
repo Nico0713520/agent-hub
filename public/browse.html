@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>查看心得 - Agent Hub</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; min-height: 100vh; display: flex; justify-content: center; padding: 60px 16px; }
+  .wrap { max-width: 600px; width: 100%; }
+  h1 { font-size: 24px; margin-bottom: 4px; }
+  .sub { color: #666; font-size: 14px; margin-bottom: 24px; }
+  .card { background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .loading { text-align: center; color: #999; padding: 40px 0; }
+  .file-item { display: flex; align-items: center; padding: 14px 0; border-bottom: 1px solid #f0f0f0; text-decoration: none; color: inherit; }
+  .file-item:last-child { border-bottom: none; }
+  .file-item:hover { opacity: 0.7; }
+  .file-item .icon { font-size: 32px; margin-right: 14px; flex-shrink: 0; }
+  .file-item .info { flex: 1; min-width: 0; }
+  .file-item .name { font-size: 15px; font-weight: 500; word-break: break-all; }
+  .file-item .arrow { color: #ccc; font-size: 20px; flex-shrink: 0; }
+  .empty { text-align: center; color: #999; padding: 40px 0; font-size: 15px; }
+  .empty a { color: #3451b2; }
+  .back { text-align: center; margin-top: 24px; }
+  .back a { color: #666; font-size: 14px; text-decoration: none; }
+  .back a:hover { color: #3451b2; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>查看心得</h1>
+  <p class="sub">所有上传的文件</p>
+  <div class="card">
+    <div id="file-list"><div class="loading">加载中...</div></div>
+  </div>
+  <div class="back">
+    <a href="/">← 返回首页</a> &nbsp;|&nbsp;
+    <a href="/upload.html">上传心得 →</a>
+  </div>
+</div>
+
+<script>
+  var REPO_OWNER = 'Nico0713520';
+  var REPO_NAME = 'agent-hub';
+  var PDF_PATH = 'public/pdf';
+
+  var list = document.getElementById('file-list');
+  fetch('https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/contents/' + PDF_PATH).then(function(res) {
+    if (res.status === 404) { list.innerHTML = '<div class="empty">还没有上传任何文件<br><br><a href="/upload.html">去上传第一篇心得 →</a></div>'; return; }
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  }).then(function(files) {
+    if (!Array.isArray(files) || files.length === 0) { list.innerHTML = '<div class="empty">还没有上传任何文件</div>'; return; }
+    var items = files.filter(function(f) { return f.type === 'file'; });
+    if (items.length === 0) { list.innerHTML = '<div class="empty">还没有上传任何文件</div>'; return; }
+    var iconMap = { pdf:'📕', doc:'📘', docx:'📘', ppt:'📙', pptx:'📙', xls:'📗', xlsx:'📗', png:'🖼️', jpg:'🖼️', jpeg:'🖼️', gif:'🖼️', webp:'🖼️', txt:'📝', zip:'📦', rar:'📦' };
+    list.innerHTML = items.map(function(f) {
+      var ext = f.name.split('.').pop().toLowerCase();
+      var icon = iconMap[ext] || '📎';
+      var url = 'https://' + REPO_OWNER + '.github.io/' + REPO_NAME + '/pdf/' + encodeURIComponent(f.name);
+      return '<a class="file-item" href="' + url + '" target="_blank"><span class="icon">' + icon + '</span><span class="info"><span class="name">' + esc(f.name) + '</span></span><span class="arrow">→</span></a>';
+    }).join('');
+  }).catch(function(err) {
+    list.innerHTML = '<div class="empty">加载失败: ' + esc(err.message) + '</div>';
+  });
+
+  function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+</script>
+</body>
+</html>

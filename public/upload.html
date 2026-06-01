@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>上传心得 - Agent Hub</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; min-height: 100vh; display: flex; justify-content: center; padding: 60px 16px; }
+  .wrap { max-width: 480px; width: 100%; }
+  h1 { font-size: 24px; margin-bottom: 4px; }
+  .sub { color: #666; font-size: 14px; margin-bottom: 24px; }
+  .card { background: #fff; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .card label { font-size: 14px; font-weight: 600; display: block; margin-bottom: 8px; }
+  .upload-zone { border: 2px dashed #ccc; border-radius: 12px; padding: 48px 16px; text-align: center; cursor: pointer; transition: all 0.2s; margin-bottom: 8px; }
+  .upload-zone:hover, .upload-zone.dragover { border-color: #3451b2; background: #f5f7ff; }
+  .upload-zone .icon { font-size: 44px; margin-bottom: 8px; }
+  .upload-zone .text { font-size: 14px; color: #888; }
+  #file-input { display: none; }
+  .file-list { margin: 12px 0; }
+  .file-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #f8f9fa; border-radius: 8px; margin-bottom: 6px; font-size: 14px; }
+  .file-item .name { flex: 1; word-break: break-all; }
+  .file-item .size { color: #999; font-size: 12px; margin: 0 12px; white-space: nowrap; }
+  .file-item .remove { background: none; border: none; color: #e00; cursor: pointer; font-size: 20px; }
+  .btn { display: block; width: 100%; padding: 12px; border-radius: 8px; border: none; font-size: 15px; font-weight: 600; cursor: pointer; text-align: center; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary { background: #3451b2; color: #fff; }
+  .status { margin-top: 12px; padding: 10px 14px; border-radius: 8px; font-size: 14px; display: none; }
+  .status.show { display: block; }
+  .status.success { background: #e6f7e6; color: #2d7d2d; }
+  .status.error { background: #fde8e8; color: #c53030; }
+  .status a { color: inherit; font-weight: 600; }
+  .back { text-align: center; margin-top: 24px; }
+  .back a { color: #666; font-size: 14px; text-decoration: none; }
+  .back a:hover { color: #3451b2; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>上传心得</h1>
+  <p class="sub">拖拽 PDF 文件，直接上传</p>
+  <div class="card" id="token-setup" style="display:none">
+    <label>首次使用 — 设置 Token</label>
+    <p style="font-size:13px;color:#999;margin-bottom:12px;">
+      只需设置一次。Token 存在浏览器里，下次自动生效。<br>
+      获取方式：<a href="https://github.com/settings/tokens?type=beta" target="_blank">GitHub Token 设置</a> →
+      新建 Fine-grained token，<b>Contents: Read & Write</b>
+    </p>
+    <input id="token-input" type="password" placeholder="粘贴 GitHub Token" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;font-size:14px;margin-bottom:10px;">
+    <button class="btn btn-primary" onclick="saveTokenUI()">保存</button>
+  </div>
+  <div class="card" id="main-ui">
+    <label>选择文件</label>
+    <div class="upload-zone" id="drop-zone">
+      <div class="icon">📄</div>
+      <div class="text">拖拽 PDF 到这里，或点击选择文件</div>
+    </div>
+    <input type="file" id="file-input" multiple accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.txt,.zip">
+    <div class="file-list" id="file-list"></div>
+    <button class="btn btn-primary" id="upload-btn" disabled>上传</button>
+    <div class="status" id="status"></div>
+  </div>
+  <div class="back">
+    <a href="/">← 返回首页</a> &nbsp;|&nbsp;
+    <a href="/browse.html">查看心得 →</a>
+  </div>
+</div>
+
+<script>
+  var REPO_OWNER = 'Nico0713520';
+  var REPO_NAME  = 'agent-hub';
+  var BRANCH     = 'main';
+  var UPLOAD_PATH = 'public/pdf';
+  var selectedFiles = [];
+  var dropZone = document.getElementById('drop-zone');
+  var fileInput = document.getElementById('file-input');
+  var uploadBtn = document.getElementById('upload-btn');
+  var statusEl = document.getElementById('status');
+
+  // Token from localStorage (set once by admin, saved in browser)
+  var TOKEN = localStorage.getItem('gh_token') || '';
+  var tokenSetup = document.getElementById('token-setup');
+  var mainUI = document.getElementById('main-ui');
+  var tokenInput = document.getElementById('token-input');
+
+  if (TOKEN) {
+    tokenSetup.style.display = 'none';
+    mainUI.style.display = '';
+  } else {
+    tokenSetup.style.display = '';
+    mainUI.style.display = 'none';
+  }
+
+  window.saveTokenUI = function() {
+    var v = tokenInput.value.trim();
+    if (!v) { alert('请粘贴 Token'); return; }
+    localStorage.setItem('gh_token', v);
+    TOKEN = v;
+    tokenSetup.style.display = 'none';
+    mainUI.style.display = '';
+  };
+
+  dropZone.addEventListener('click', function() { fileInput.click(); });
+  dropZone.addEventListener('dragover', function(e) { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', function() { dropZone.classList.remove('dragover'); });
+  dropZone.addEventListener('drop', function(e) { e.preventDefault(); dropZone.classList.remove('dragover'); addFiles(e.dataTransfer.files); });
+  fileInput.addEventListener('change', function() { addFiles(fileInput.files); });
+
+  function addFiles(files) {
+    for (var i = 0; i < files.length; i++) {
+      if (selectedFiles.find(function(f) { return f.name === files[i].name; })) continue;
+      selectedFiles.push(files[i]);
+    }
+    renderFiles();
+  }
+
+  window.removeFile = function(name) {
+    selectedFiles = selectedFiles.filter(function(f) { return f.name !== name; });
+    renderFiles();
+  };
+
+  function renderFiles() {
+    var list = document.getElementById('file-list');
+    if (selectedFiles.length === 0) { list.innerHTML = ''; uploadBtn.disabled = true; return; }
+    uploadBtn.disabled = false;
+    list.innerHTML = selectedFiles.map(function(f) {
+      return '<div class="file-item"><span class="name">' + esc(f.name) + '</span><span class="size">' + fmtSize(f.size) + '</span><button class="remove" onclick="removeFile(\'' + esc(f.name) + '\')">&times;</button></div>';
+    }).join('');
+  }
+
+  uploadBtn.addEventListener('click', function() {
+    TOKEN = localStorage.getItem('gh_token') || '';
+    if (!TOKEN) { alert('请先配置 Token'); return; }
+    if (selectedFiles.length === 0) return;
+    uploadBtn.disabled = true;
+    uploadBtn.textContent = '上传中...';
+    statusEl.className = 'status show';
+
+    function uploadNext(i) {
+      if (i >= selectedFiles.length) {
+        statusEl.className = 'status success show';
+        statusEl.innerHTML = '上传成功！<a href="/browse.html">去查看心得 →</a>';
+        selectedFiles = [];
+        renderFiles();
+        uploadBtn.textContent = '上传';
+        return;
+      }
+      var file = selectedFiles[i];
+      statusEl.textContent = '上传中: ' + file.name + ' (' + (i+1) + '/' + selectedFiles.length + ')';
+      var reader = new FileReader();
+      reader.onload = function() {
+        var base64 = reader.result.split(',')[1];
+        fetch('https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/contents/' + UPLOAD_PATH + '/' + file.name, {
+          method: 'PUT',
+          headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: '上传: ' + file.name, content: base64, branch: BRANCH })
+        }).then(function(res) {
+          if (!res.ok) return res.json().then(function(e) { throw new Error(e.message); });
+          uploadNext(i + 1);
+        }).catch(function(err) {
+          statusEl.className = 'status error show';
+          statusEl.textContent = '失败: ' + file.name + ' - ' + err.message;
+          uploadBtn.disabled = false;
+          uploadBtn.textContent = '上传';
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+    uploadNext(0);
+  });
+
+  function fmtSize(b) { if (b < 1024) return b + 'B'; if (b < 1024*1024) return (b/1024).toFixed(1) + 'KB'; return (b/(1024*1024)).toFixed(1) + 'MB'; }
+  function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+</script>
+</body>
+</html>
